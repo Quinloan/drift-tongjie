@@ -1,0 +1,116 @@
+mod app_config;
+mod bilibili;
+mod logging;
+mod system_fonts;
+mod tray;
+mod update_check;
+mod window_control;
+
+use tauri::Manager;
+
+#[tauri::command]
+fn set_click_through(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    window_control::set_click_through(&app, enabled)
+}
+
+#[tauri::command]
+async fn open_help_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("help") {
+        let _ = window.close();
+        // Wait for the window to fully close on all platforms
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let _ =
+        tauri::WebviewWindowBuilder::new(&app, "help", tauri::WebviewUrl::App("help.html".into()))
+            .title("如何获取房间号")
+            .inner_size(420.0, 480.0)
+            .resizable(false)
+            .center()
+            .build();
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(bilibili::room_manager::RoomConnectionManager::default())
+        .manage(bilibili::filter_runtime::FilterRuntimeState::default())
+        .manage(bilibili::send::SendDanmakuState::default())
+        .manage(bilibili::recording::DanmakuRecorder::default())
+        .manage(window_control::EditModeState::default())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            logging::init(app.handle())?;
+            tracing::debug!(target: "drift::update", "tauri updater plugin initialized");
+            bilibili::recording::setup(app)?;
+            window_control::setup(app)?;
+            tray::setup(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "main" || window.label() == "control" {
+                if matches!(
+                    event,
+                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+                ) {
+                    if let Err(error) = window_control::save_window_layout_for_label(
+                        window.app_handle(),
+                        window.label(),
+                    ) {
+                        tracing::warn!(
+                            target: "drift::window",
+                            label = window.label(),
+                            error = %error,
+                            "failed to save window layout from window event"
+                        );
+                    }
+                }
+                tray::prevent_close_to_tray(window, event);
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            app_config::load_app_config,
+            app_config::save_app_config,
+            app_config::set_last_send_room_id,
+            logging::open_log_dir,
+            logging::export_diagnostics,
+            system_fonts::list_system_fonts,
+            set_click_through,
+            tray::hide_window,
+            tray::show_window,
+            window_control::set_edit_mode,
+            window_control::set_edit_mode_shortcut,
+            window_control::set_overlay_window_shortcut,
+            window_control::set_send_danmaku_shortcut,
+            window_control::open_send_danmaku_window,
+            window_control::hide_send_danmaku_window,
+            window_control::begin_send_danmaku_window_drag,
+            window_control::drag_send_danmaku_window,
+            window_control::end_send_danmaku_window_drag,
+            window_control::save_window_layout,
+            window_control::load_window_layout,
+            bilibili::ws::connect_bilibili_room,
+            bilibili::ws::disconnect_bilibili_room,
+            bilibili::ws::disconnect_all_bilibili_rooms,
+            bilibili::ws::get_bilibili_room_sessions,
+            bilibili::filter_runtime::get_filter_runtime_status,
+            bilibili::filter_runtime::pause_fan_medal_rules_for_session,
+            bilibili::recording::get_danmaku_recording_status,
+            bilibili::recording::set_danmaku_recording_enabled,
+            bilibili::recording::retry_danmaku_recording,
+            bilibili::recording::open_danmaku_record_dir,
+            bilibili::send::send_bilibili_danmaku,
+            bilibili::send::get_send_danmaku_status,
+            bilibili::diagnostics::test_bilibili_api,
+            bilibili::auth::auth_get_status,
+            bilibili::auth::auth_start_qr_login,
+            bilibili::auth::auth_poll_qr_login,
+            bilibili::auth::auth_validate_session,
+            bilibili::auth::auth_logout,
+            update_check::get_app_version,
+            open_help_window
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
