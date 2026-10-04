@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "control", "help"],
+  "description": "Capability for the main, control, help and send windows",
+  "windows": ["main", "control", "help", "send"],
   "permissions": [
     "core:default",
     "core:window:allow-outer-position",
