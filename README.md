@@ -1,5 +1,65 @@
 # Drift
 
+> ## ⚠️ 这是一个非官方修改版（Fork）
+>
+> 本仓库基于 [proudzhao/Drift](https://github.com/proudzhao/Drift) `v0.9.0`（提交 `6af8b01`）修改而来。
+> 原项目采用 **MIT** 许可证，版权归原作者 **proudzhao** 所有，仓库中的 `LICENSE` 文件完整保留、未作任何修改；
+> 本修改版同样以 MIT 许可发布。
+>
+> 本版本相对上游只有「一个新增功能 + 一个缺陷修复」，代码改动非常克制。
+> 它不是 bilibili 官方产品，与原作者也无关联；如有问题请在本仓库提 issue，不要打扰上游作者。
+>
+> 想直接看改了什么，往下翻到「**本版本相对上游的改动**」。
+
+---
+
+## 本版本相对上游的改动
+
+| # | 类型 | 改动 | 影响范围 |
+|---|------|------|----------|
+| 1 | 新增功能 | 弹幕窗口左上角显示直播间**同接数**（B 站在线观看人数） | 前端 `App.tsx` / `App.css` + Rust 后端 4 个文件 |
+| 2 | 缺陷修复 | 修复「发送弹幕」窗口无法选择目标直播间、完全发不出弹幕的问题 | 配置 `capabilities/default.json` |
+
+### 1. 新增：弹幕窗口左上角显示同接数
+
+在"已经连接直播间"时，弹幕悬浮窗左上角会出现一个胶囊形徽标，例如 `同接 1,419`。
+
+实现要点：
+
+- **数据来源**：直接解析 B 站直播 WebSocket 下发的 `ONLINE_RANK_COUNT` 协议包，
+  依次尝试取其中的 `count`、`online_count` 字段。**不额外轮询 HTTP 接口**，不增加任何请求负担。
+- **新增的职责链**：`protocol.rs` 的 `handle_packet` 返回值由 `Vec<LiveMessage>` 扩展为
+  `(Vec<LiveMessage>, Option<u64>)`，由 `ws.rs` 收到后写入 `room_manager` 的房间快照，
+  再经 `useRoomSessions` 传到前端。
+- **显示条件**：仅当会话状态为 `connected` / `reconnecting` 且确实取到数值时才渲染；
+  没有数据时自动隐藏，不留空白占位。
+- **多房间**：按会话逐个渲染，多个直播间同时连接时会纵向排列。
+- **样式**：左上角固定 8px 偏移，圆角胶囊、半透明深色底，跟随弹幕窗口的透明度设置。
+
+涉及文件：`src-tauri/src/bilibili/{protocol,ws,room_manager,send/mod}.rs`、
+`src/{App.tsx,App.css}`、`src/types/roomSession.ts`、`src/hooks/useRoomSessions.ts`。
+
+### 2. 修复：发送弹幕窗口选不到目标直播间
+
+**问题**：明明已经连接直播间（能正常收到弹幕），按发送弹幕快捷键打开窗口后，
+"发送到"下拉框里却只有"请选择目标"，目标为空、发送按钮禁用，导致完全无法发送弹幕。
+
+**根因**：`drift/src-tauri/capabilities/default.json` 里的窗口白名单是
+`["main", "control", "help"]`，**漏掉了运行时动态创建的 `send` 窗口**。
+Tauri 2 的权限是按窗口粒度授权的，未匹配到任何 capability 的窗口将**没有任何插件权限**；
+于是前端 `useRoomSessions` 的第一步 `listen("bilibili-room-sessions")` 被 ACL 拒绝，
+异常被 `catch` 吞掉后 `sessions` 恒为空数组，下拉框自然什么都没有。
+
+这也解释了为什么"主窗口能收弹幕、发送窗口却拿不到房间"——主窗口在白名单里，发送窗口不在。
+
+**修复**：把 `"send"` 加入该白名单。重新构建后，发送窗口即可正常枚举已连接直播间。
+
+---
+
+以下是原项目 README 的完整内容（未作改动）：
+
+---
+
 Drift 是一款桌面顶层透明弹幕悬浮工具。它可以连接 B 站直播间，把实时弹幕显示在桌面透明窗口上，适合边听直播，边学习、工作或打游戏时使用。
 
 > 小提示：独占全屏游戏通常会遮住桌面悬浮窗口。如果想在游戏时显示弹幕，建议把游戏显示模式调整为“无边框窗口”或“窗口化全屏”。
@@ -175,3 +235,28 @@ Drift/
 ├── assets/               # README 截图资源
 └── README.md
 ```
+
+---
+
+## 许可与致谢（本 Fork）
+
+- 本项目派生自 [proudzhao/Drift](https://github.com/proudzhao/Drift)，原作者为 **proudzhao**，
+  **MIT License, Copyright (c) 2026 proudzhao**。原项目的 `LICENSE` 文件完整保留。
+- 本 Fork 的修改部分同样以 **MIT** 许可公开发布，可以自由使用、修改和再发布，
+  只需保留上述版权声明与许可证全文即可。
+- 项目依赖的 Rust crates 与 npm 包各自遵循其原作者许可证，此处一并致谢。
+- GitHub Actions 工作流与 Release 相关配置沿用上游，**本 Fork 未自建发布流程**。
+
+## 已知注意事项
+
+- 本版本**未修改**应用内置自动更新的地址，它仍指向上游 `proudzhao/Drift` 的 Release。
+  若你不希望被上游版本覆盖，请在设置窗口关闭"启动时检查更新"，或自行修改
+  `drift/src-tauri/tauri.conf.json` 中的 updater 配置后再构建。
+- 发送弹幕功能需要 B 站账号扫码登录，且单条弹幕限制 60 个 Unicode 字符，
+  这些限制与上游保持一致。
+
+## 免责声明
+
+本项目仅供学习与技术交流使用，与 bilibili 官方无关，也未使用任何官方私有接口。
+弹幕数据来自公开的直播间 WebSocket 通道。请勿用于任何违反平台规则的用途，
+由此产生的一切后果由使用者自行承担。
