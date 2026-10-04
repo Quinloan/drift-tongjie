@@ -149,6 +149,20 @@ test("normalizes mixed payloads and de-duplicates session ids", async () => {
   await waitFor(() => expect(result.current.sessions).toEqual([CONNECTED_SESSION]));
 });
 
+test("keeps a valid viewer count and drops a malformed one", async () => {
+  mockIPC(() => [
+    { ...CONNECTED_SESSION, online: 12345 },
+    { ...CONNECTED_SESSION, sessionId: "room-session-2", online: -1 },
+  ]);
+  const { result } = renderHook(() => useRoomSessions({ enabled: true }));
+
+  await waitFor(() =>
+    expect(result.current.sessions).toEqual([
+      { ...CONNECTED_SESSION, online: 12345 },
+    ]),
+  );
+});
+
 test("cleans up the listener on unmount", async () => {
   const disposers: Array<ReturnType<typeof vi.fn>> = [];
   eventMock.listen.mockImplementation(async (_name, handler) => {

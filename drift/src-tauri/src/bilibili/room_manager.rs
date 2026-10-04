@@ -35,6 +35,8 @@ pub struct RoomSessionSnapshot {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_status: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +125,7 @@ struct RoomSessionEntry {
     status: RoomSessionStatus,
     message: String,
     live_status: Option<u8>,
+    online: Option<u64>,
     generation: u64,
     created_order: u64,
     task_install_open: bool,
@@ -141,6 +144,7 @@ impl RoomSessionEntry {
             status: self.status,
             message: self.message.clone(),
             live_status: self.live_status,
+            online: self.online,
         }
     }
 }
@@ -190,6 +194,7 @@ impl RoomConnectionManager {
                 status: RoomSessionStatus::Connecting,
                 message: "正在连接".to_string(),
                 live_status: None,
+                online: None,
                 generation,
                 created_order: generation,
                 task_install_open: true,
@@ -392,6 +397,13 @@ impl RoomConnectionManager {
         let entry = current_entry_mut(&mut inner, lease)?;
         entry.anchor_name = anchor_name;
         entry.fan_medal_name = fan_medal_name;
+        Ok(())
+    }
+
+    pub fn set_online(&self, lease: &SessionLease, online: u64) -> Result<(), String> {
+        let mut inner = self.lock()?;
+        let entry = current_entry_mut(&mut inner, lease)?;
+        entry.online = Some(online);
         Ok(())
     }
 
@@ -711,6 +723,7 @@ mod tests {
             status: RoomSessionStatus::Connecting,
             message: "正在连接".into(),
             live_status: None,
+            online: None,
         };
 
         assert_eq!(
@@ -721,6 +734,20 @@ mod tests {
                 "status": "connecting",
                 "message": "正在连接"
             })
+        );
+    }
+
+    #[test]
+    fn set_online_exposes_viewer_count_in_snapshot() {
+        let manager = RoomConnectionManager::default();
+        let lease = resolved_session(&manager, 6, 66);
+        manager.set_online(&lease, 12345).expect("set online");
+
+        let snapshot = &manager.snapshot().expect("snapshot")[0];
+        assert_eq!(snapshot.online, Some(12345));
+        assert_eq!(
+            serde_json::to_value(snapshot).expect("json")["online"],
+            12345
         );
     }
 

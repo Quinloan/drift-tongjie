@@ -95,9 +95,10 @@ pub(crate) fn handle_packet(
     anchor_uid: u64,
     self_uid: Option<u64>,
     bytes: &[u8],
-) -> Result<Vec<LiveMessage>, String> {
+) -> Result<(Vec<LiveMessage>, Option<u64>), String> {
     let packets = unpack_packets(bytes)?;
     let mut messages = Vec::new();
+    let mut online = None;
 
     for packet in packets {
         match packet.operation {
@@ -112,6 +113,9 @@ pub(crate) fn handle_packet(
                 }
             }
             5 => {
+                if let Some(count) = extract_online_count(&packet.payload) {
+                    online = Some(count);
+                }
                 if let Some(mut msg) =
                     try_extract_live_message(&packet.payload, anchor_uid, self_uid)
                 {
@@ -128,7 +132,16 @@ pub(crate) fn handle_packet(
         }
     }
 
-    Ok(messages)
+    Ok((messages, online))
+}
+
+fn extract_online_count(payload: &[u8]) -> Option<u64> {
+    let value = serde_json::from_slice::<Value>(payload).ok()?;
+    if value.get("cmd").and_then(Value::as_str) != Some("ONLINE_RANK_COUNT") {
+        return None;
+    }
+    let data = value.get("data")?;
+    u64_field(data, &["count", "online_count"])
 }
 
 fn try_extract_live_message(
@@ -866,6 +879,18 @@ mod tests {
         assert_eq!(message.guard_name.as_deref(), Some("舰长"));
         assert_eq!(message.sender_uid, Some(7));
         assert_eq!(message.current_room_fan_medal, None);
+    }
+
+    #[test]
+    fn extracts_online_count_from_online_rank_count() {
+        let payload = r#"{"cmd":"ONLINE_RANK_COUNT","data":{"count":1611}}"#;
+        assert_eq!(extract_online_count(payload.as_bytes()), Some(1611));
+
+        let fallback = r#"{"cmd":"ONLINE_RANK_COUNT","data":{"online_count":42}}"#;
+        assert_eq!(extract_online_count(fallback.as_bytes()), Some(42));
+
+        let ignored = r#"{"cmd":"DANMU_MSG","data":{"count":999}}"#;
+        assert_eq!(extract_online_count(ignored.as_bytes()), None);
     }
 
     #[test]

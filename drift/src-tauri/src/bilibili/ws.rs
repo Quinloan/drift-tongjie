@@ -394,7 +394,7 @@ async fn connect_room(
             message = reader.next() => {
                 match message {
                     Some(Ok(Message::Binary(bytes))) => {
-                        let messages = protocol::handle_packet(
+                        let (messages, online) = protocol::handle_packet(
                             &app,
                             &status_emitter,
                             room_id,
@@ -402,6 +402,15 @@ async fn connect_room(
                             self_uid,
                             &bytes,
                         )?;
+                        if let Some(online) = online {
+                            if app
+                                .state::<RoomConnectionManager>()
+                                .set_online(lease, online)
+                                .is_ok()
+                            {
+                                let _ = emit_room_sessions(&app);
+                            }
+                        }
                         let messages = super_chat_dedup.retain_new(room_id, messages);
                         danmaku_buffer.extend(messages);
                         if danmaku_buffer.len() >= DANMAKU_BUFFER_MAX {

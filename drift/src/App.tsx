@@ -25,7 +25,7 @@ import {
   mergeAppConfig,
   type AppConfig,
 } from "./types/config";
-import type { DanmakuRoomBatch } from "./types/roomSession";
+import type { DanmakuRoomBatch, RoomSessionSnapshot } from "./types/roomSession";
 import type { VerticalFlowStatus } from "./types/verticalFlow";
 import {
   MIN_TRACK_COUNT,
@@ -75,6 +75,12 @@ type EditModeChanged = {
   shortcut: string;
 };
 
+type ViewerSession = RoomSessionSnapshot & { online: number };
+
+function formatViewerCount(value: number) {
+  return value.toLocaleString("zh-CN");
+}
+
 function createInitialConfig(): AppConfig {
   return {
     ...DEFAULT_APP_CONFIG,
@@ -95,6 +101,11 @@ function App() {
   const { isInitialReady: roomSessionsReady, sessions: roomSessions } = useRoomSessions({
     enabled: windowLabel === "main",
   });
+  const viewerSessions = roomSessions.filter(
+    (session): session is ViewerSession =>
+      (session.status === "connected" || session.status === "reconnecting") &&
+      typeof session.online === "number",
+  );
   const {
     enqueueLiveBatch,
     handleMockRateChange,
@@ -398,6 +409,15 @@ function App() {
           trackCount={trackCount}
         />
       )}
+      {viewerSessions.length > 0 ? (
+        <div className="danmaku-viewer-badges" aria-label="同接数">
+          {viewerSessions.map((session) => (
+            <span className="danmaku-viewer-badge" key={session.sessionId}>
+              同接 {formatViewerCount(session.online)}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {isEditMode ? (
         <OverlayEditWorkspace
           historyMessages={historySnapshot}

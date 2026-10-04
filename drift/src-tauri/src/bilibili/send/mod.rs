@@ -206,6 +206,7 @@ mod tests {
             status,
             message: "状态消息".to_string(),
             live_status: Some(1),
+            online: None,
         }
     }
 

@@ -119,7 +119,8 @@ export function normalizeRoomSessionSnapshots(
       typeof item.message !== "string" ||
       !isOptionalString(item.anchorName) ||
       !isOptionalString(item.fanMedalName) ||
-      !isOptionalLiveStatus(item.liveStatus)
+      !isOptionalLiveStatus(item.liveStatus) ||
+      !isOptionalNonNegativeInteger(item.online)
     ) {
       continue;
     }
@@ -136,6 +137,7 @@ export function normalizeRoomSessionSnapshots(
       status: item.status as RoomSessionStatus,
       message: item.message,
       ...(item.liveStatus === undefined ? {} : { liveStatus: item.liveStatus }),
+      ...(item.online === undefined ? {} : { online: item.online }),
     });
   }
   return snapshots;
@@ -157,5 +159,12 @@ function isOptionalLiveStatus(value: unknown): value is number | undefined {
   return (
     value === undefined ||
     (Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 255)
+  );
+}
+
+function isOptionalNonNegativeInteger(value: unknown): value is number | undefined {
+  return (
+    value === undefined ||
+    (Number.isSafeInteger(value) && Number(value) >= 0)
   );
 }

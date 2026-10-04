@@ -18,6 +18,7 @@ export type RoomSessionSnapshot = {
   status: RoomSessionStatus;
   message: string;
   liveStatus?: number;
+  online?: number;
 };
 
 export type DanmakuRoomBatch = {
