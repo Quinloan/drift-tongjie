@@ -9,6 +9,7 @@ import { applyDocumentUiTheme, normalizeUiTheme } from "../utils/uiTheme";
 import { SendDanmakuView, type SendFeedbackTone } from "./SendDanmakuView";
 
 const TEXT_LIMIT = 60;
+const SEND_AUTO_CLOSE_DELAY_MS = 600;
 
 type ThemeConfigSnapshot = {
   appearance?: {
@@ -60,6 +61,7 @@ export function SendDanmakuWindow() {
   const targetsRef = useRef<Array<{ roomId: number; label: string }>>([]);
   const disposedRef = useRef(false);
   const themeSyncVersionRef = useRef(0);
+  const autoCloseTimerRef = useRef<number | null>(null);
   const { isInitialReady, sessions } = useRoomSessions({ enabled: true });
   const [text, setText] = useState("");
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -106,6 +108,19 @@ export function SendDanmakuWindow() {
 
   function invalidateStatusRequests() {
     statusRequestVersionRef.current += 1;
+  }
+
+  function scheduleAutoClose() {
+    if (autoCloseTimerRef.current !== null) {
+      window.clearTimeout(autoCloseTimerRef.current);
+    }
+    autoCloseTimerRef.current = window.setTimeout(() => {
+      autoCloseTimerRef.current = null;
+      if (disposedRef.current) {
+        return;
+      }
+      void hideWindow();
+    }, SEND_AUTO_CLOSE_DELAY_MS);
   }
 
   function setCurrentSelectedRoomId(roomId: number | null) {
@@ -378,6 +393,7 @@ export function SendDanmakuWindow() {
       );
       setManualFeedback(result.message, "success");
       focusInput();
+      scheduleAutoClose();
     } catch (error) {
       const failureMessage = String(error);
       await refreshStatus(selectedRoomIdRef.current, { syncFeedback: false });
@@ -407,6 +423,10 @@ export function SendDanmakuWindow() {
     return () => {
       disposedRef.current = true;
       themeSyncVersionRef.current += 1;
+      if (autoCloseTimerRef.current !== null) {
+        window.clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -424,6 +444,22 @@ export function SendDanmakuWindow() {
     setCurrentSelectedRoomId(null);
     void refreshStatus(null);
   }, [hasSelectedTarget, isInitialReady, refreshStatus, selectedRoomId]);
+
+  useEffect(() => {
+    if (!isInitialReady) {
+      return;
+    }
+
+    if (hasSelectedTarget || pendingTargetWriteCountRef.current > 0) {
+      return;
+    }
+
+    if (targetsRef.current.length !== 1) {
+      return;
+    }
+
+    handleTargetChange(targetsRef.current[0].roomId);
+  }, [hasSelectedTarget, isInitialReady, sessions]);
 
   useEffect(() => {
     if (!isInitialReady || selectedRoomIdRef.current === null) {
