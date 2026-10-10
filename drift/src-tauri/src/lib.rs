@@ -37,6 +37,15 @@ pub fn run() {
         .manage(bilibili::send::SendDanmakuState::default())
         .manage(bilibili::recording::DanmakuRecorder::default())
         .manage(window_control::EditModeState::default())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 已经有一个实例在跑（可能窗口都藏到托盘了）。这时再双击快捷方式
+            // 不应该再起一个进程，而是把现有窗口重新显示出来。
+            tracing::info!(
+                target: "drift::app",
+                "another instance attempted to start; restoring the existing control window"
+            );
+            let _ = tray::show_window_by_label(app, "control");
+        }))
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())

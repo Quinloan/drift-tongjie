@@ -114,7 +114,7 @@ pub fn hide_window(app: AppHandle, label: String) -> Result<(), String> {
     hide_window_by_label(&app, &label)
 }
 
-fn show_window_by_label(app: &AppHandle, label: &str) -> Result<(), String> {
+pub(crate) fn show_window_by_label(app: &AppHandle, label: &str) -> Result<(), String> {
     let window = app
         .get_webview_window(label)
         .ok_or_else(|| format!("window not found: {}", label))?;
